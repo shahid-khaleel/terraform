@@ -4,6 +4,12 @@ Terraform module which creates AWS KMS resources.
 
 [![SWUbanner](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
 
+## Provenance & usage in this repository
+
+This is a vendored, **unmodified** copy of the upstream community module [`terraform-aws-modules/terraform-aws-kms`](https://github.com/terraform-aws-modules/terraform-aws-kms) (the content below this section, including the requirements/inputs/outputs tables, is the module's original documentation). The `wrappers/` sub-directory is the upstream `for_each` wrapper pattern that lets you create multiple keys from a single `module` block — see [`wrappers/README` equivalent usage](https://github.com/terraform-aws-modules/terraform-aws-kms#usage) or the [terraform-aws-modules wrappers docs](https://github.com/terraform-aws-modules/terraform-aws-kms/tree/master/wrappers) upstream.
+
+Within this repository, this module is called from [`modules/eks/main.tf`](../eks/main.tf) (`module "kms"`) and is only actually invoked when `var.create_kms_key = true` on the `eks` module. The current `environments/qa` deployment sets `create_kms_key = false` and instead points EKS Secrets encryption at an **existing** KMS key looked up via `data "aws_kms_key" "app-data"` (alias `alias/app-data`) — so in `qa`, this module's resources are not currently created. It remains available for any environment that wants Terraform to own the KMS key's lifecycle instead of reusing an existing one.
+
 ## Usage
 
 See [`examples`](https://github.com/terraform-aws-modules/terraform-aws-kms/tree/master/examples) directory for working examples to reference:
@@ -236,3 +242,5 @@ No modules.
 ## License
 
 Apache-2.0 Licensed. See [LICENSE](https://github.com/terraform-aws-modules/terraform-aws-kms/blob/master/LICENSE).
+
+Note: this vendored module retains its original upstream Apache-2.0 license, which is separate from the MIT license covering the rest of this repository (see the root [`LICENSE`](../../LICENSE)).

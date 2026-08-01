@@ -1,0 +1,38 @@
+# Local .terraform directories
+**/.terraform/*
+
+# Terraform lock files (uncomment if you intentionally do NOT want to commit them;
+# committing .terraform.lock.hcl is generally recommended for reproducibility)
+# .terraform.lock.hcl
+
+# Terraform state files — may contain sensitive data, must never be committed
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude variable files that may contain sensitive data, but allow example/template files.
+# NOTE: environments/qa/terraform.tfvars is already tracked in git history with placeholder
+# (blank) values as of this writing. This rule prevents *new* tfvars files with real values
+# from being committed going forward; it does not retroactively untrack the existing file.
+# See the root README's "Security considerations" section for the recommended follow-up.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+
+# Terraform plan output files
+*.tfplan
+*.tfplan.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
