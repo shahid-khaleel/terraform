@@ -1,0 +1,118 @@
+name: Terraform Validate
+
+# Lightweight, credential-free CI: formatting + syntax/internal-consistency
+# checks only. No AWS credentials are configured anywhere in this workflow
+# (init always runs with -backend=false), so nothing here can create, modify,
+# or read real AWS resources. This is intentionally NOT a `terraform plan`.
+#
+# `environments/qa` is expected to FAIL `terraform validate` right now — see
+# the job below for why, and README.md's "Known Issues" section for the
+# full list of pre-existing bugs this repo already documents.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # >= 1.5.7 is required by both modules/eks/versions.tf and
+  # modules/kms/versions.tf. environments/qa/version.tf pins provider
+  # versions but has no required_version of its own (see Known Issues #8),
+  # so we standardize CI on a recent stable release that satisfies the
+  # modules' constraint.
+  TF_VERSION: "1.9.8"
+
+jobs:
+  fmt:
+    name: terraform fmt -check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt -check -recursive
+        run: terraform fmt -check -recursive -diff
+
+  validate-qa:
+    name: terraform validate (environments/qa)
+    runs-on: ubuntu-latest
+    # EXPECTED TO FAIL: environments/qa/output.tf references
+    # data.aws_kms_key.test-qa-mt-app-data, but the only KMS data source
+    # actually defined (in environments/qa/main.tf) is
+    # data.aws_kms_key.app-data. That's a reference to an undeclared data
+    # source, which `terraform validate` catches as a real error even
+    # without AWS credentials (it's a config-internal-consistency check, not
+    # a live API call). This is a known, pre-existing bug tracked in
+    # README.md's "Known Issues / Recommendations" (#2) and is intentionally
+    # left unfixed by this CI-only change. A red badge on this job is the
+    # honest signal until that rename is fixed in code.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init (no backend, no credentials)
+        working-directory: environments/qa
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: environments/qa
+        run: terraform validate
+
+  validate-eks-module:
+    name: terraform validate (modules/eks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init (no backend, no credentials)
+        working-directory: modules/eks
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: modules/eks
+        run: terraform validate
+
+  validate-kms-module:
+    name: terraform validate (modules/kms)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init (no backend, no credentials)
+        working-directory: modules/kms
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: modules/kms
+        run: terraform validate

@@ -1,10 +1,13 @@
 # Terraform — Amazon EKS Platform (QA)
 
+![Terraform Validate](https://github.com/shahid-khaleel/terraform/actions/workflows/validate.yml/badge.svg)
 ![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.5.7-844FBA?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-EKS%20%7C%20KMS%20%7C%20IAM-FF9900?logo=amazonaws&logoColor=white)
 ![EKS](https://img.shields.io/badge/Amazon%20EKS-managed%20node%20group-326CE5?logo=kubernetes&logoColor=white)
 ![KMS](https://img.shields.io/badge/AWS%20KMS-envelope%20encryption-2E7D32?logo=amazonwebservices&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+
+> **Heads up on the badge:** the `Terraform Validate` badge above will show **red**, honestly. It runs four independent jobs — `fmt`, `validate (environments/qa)`, `validate (modules/eks)`, `validate (modules/kms)` — and `validate (environments/qa)` is expected to fail until [Known Issue #2](#known-issues--recommendations) (the `output.tf` KMS data-source name mismatch) is fixed in code. The module jobs and `fmt` pass on their own. See [CI](#ci) below.
 
 ## Executive summary
 
@@ -72,6 +75,7 @@ flowchart TB
 |---|---|
 | `README.md` | This file. |
 | `LICENSE` | MIT license. |
+| `.github/workflows/validate.yml` | Credential-free CI: `terraform fmt -check` + `terraform validate` for `environments/qa`, `modules/eks`, and `modules/kms`. See [CI](#ci). |
 | `environments/qa/` | The only deployed environment. Root Terraform configuration that calls `modules/eks`, wires up cluster add-ons, and defines the HPA resources. |
 | `modules/eks/` | Vendored/customized EKS module (cluster, node groups, IRSA, security groups). See its own [README](modules/eks/README.md). |
 | `modules/eks/modules/eks-managed-node-group/` | Upstream sub-module used by `node_groups.tf` to create the managed node group. |
@@ -140,6 +144,19 @@ aws eks update-kubeconfig --name <cluster_name> --region <region>
 ```
 
 There is no `terraform.tfvars.example` file yet — the tracked `terraform.tfvars` currently serves that purpose (all values are blank strings). See [Known Issues](#known-issues--recommendations).
+
+## CI
+
+[`.github/workflows/validate.yml`](.github/workflows/validate.yml) runs on every push/PR to `main`. It is intentionally **credential-free** — every job runs `terraform init -backend=false` and no AWS credentials are configured anywhere in the workflow, so it only checks formatting and internal config consistency (not real resource existence, and never a `plan`/`apply`). It has four jobs:
+
+| Job | What it checks | Expected result |
+|---|---|---|
+| `fmt` | `terraform fmt -check -recursive` across the whole repo | ✅ Passes |
+| `validate-qa` | `terraform validate` in `environments/qa/` | ❌ **Fails, expected.** `output.tf` references `data.aws_kms_key.test-qa-mt-app-data`, a data source that was never declared (`main.tf` defines it as `data.aws_kms_key.app-data`). `terraform validate` catches this as a "Reference to undeclared resource" error without needing AWS credentials, since it's a config-internal-consistency check, not a live API call. This is [Known Issue #2](#known-issues--recommendations) and is deliberately left unfixed by the CI-only change that added this workflow — see the in-workflow comment for the same explanation. |
+| `validate-eks-module` | `terraform validate` in `modules/eks/`, standalone | ✅ Passes |
+| `validate-kms-module` | `terraform validate` in `modules/kms/`, standalone | ✅ Passes |
+
+**Why leave a job red instead of fixing it or removing it from CI?** The `qa` environment genuinely has this bug today — hiding it behind a green badge would be misleading, and skipping the job entirely would hide the fact that the environment doesn't currently validate at all. A red `validate-qa` job next to two green module jobs is a more honest, more useful signal than an all-green pipeline that silently ignores a real defect. Once [Known Issue #2](#known-issues--recommendations) is fixed, that job (and the overall badge) will go green without any workflow changes.
 
 ## State management
 
@@ -211,10 +228,11 @@ Since this is a `qa`-labeled environment, remember to `terraform destroy` it whe
 **What exists today:**
 - A working `qa` environment definition for EKS + managed node group + KMS-based secrets encryption + Cluster Autoscaler + AWS Load Balancer Controller + HPA.
 - Vendored, largely-unmodified `eks` and `kms` community modules providing a solid, well-tested resource layer.
+- A credential-free CI pipeline (`terraform fmt -check` + `terraform validate` on `environments/qa`, `modules/eks`, and `modules/kms` independently) — see [CI](#ci). It does not yet run `tflint`, `checkov`/`tfsec`, or a plan-on-PR step, and `validate-qa` is currently red by design until Known Issue #2 is fixed.
 
 **Real gaps (not aspirational — actually missing today):**
 - Only one environment (`qa`) exists; there is no `dev`/`staging`/`prod` structure despite the `environments/` directory name implying more.
-- No CI pipeline — no `terraform fmt -check`, `terraform validate`, `tflint`, `checkov`/`tfsec`, or plan-on-PR automation.
+- CI covers `fmt`/`validate` only — no `tflint`, `checkov`/`tfsec`, or plan-on-PR automation yet.
 - No remote state / state locking (local backend only; S3+DynamoDB block exists but is commented out).
 - Local backend + `terraform.tfvars` committed with blank values — no `.tfvars.example` convention yet (addressed by this documentation pass's `.gitignore`, but the underlying values workflow is still manual).
 - Several `qa`-specific resources contain unfinished placeholder values (blank `" "` strings in `kubernetes_ingress_v1`, `aws_ami` owner filter) that will fail `terraform apply` as-is.
@@ -238,7 +256,7 @@ Findings from this review, in rough priority order. **No Terraform resource logi
 8. **No `required_version` pin in `environments/qa/version.tf`.** Only the provider versions are pinned; the Terraform CLI version itself isn't constrained at the root, even though both modules require `>= 1.5.7`.
 9. **AWS provider is pinned to an exact version (`= 6.30.0`)** in `qa` while the modules only require `>=`. An exact pin at the root without a committed `.terraform.lock.hcl` (not present in this repo) makes reproducibility fragile — commit the lock file.
 10. **No `.terraform.lock.hcl` committed.** Without it, different operators/CI runs can silently resolve different provider patch versions.
-11. **No CI validation.** Nothing runs `terraform fmt -check`, `terraform validate`, `tflint`, or a policy/security scanner (`checkov`, `tfsec`) on push/PR.
+11. **CI validation is partial.** `.github/workflows/validate.yml` now runs `terraform fmt -check` and `terraform validate` on push/PR (see [CI](#ci)), but nothing yet runs `tflint` or a policy/security scanner (`checkov`, `tfsec`), and there is no plan-on-PR step.
 12. **EKS managed node group's root EBS volume has no explicit `encrypted = true`.** It relies on account-level default EBS encryption rather than being explicit in code.
 13. **The `var.kms_key_arn` variable added to `modules/eks/variables.tf`** ("Added by devops") is declared but never referenced anywhere in `modules/eks/main.tf` or `node_groups.tf` — it's currently a dead input.
 14. **`deletion_protection = false` and `enable_cluster_creator_admin_permissions = true`** are reasonable for a `qa` sandbox but should be revisited (`deletion_protection = true`, tightly-scoped access entries instead of blanket creator-admin) before any environment is treated as long-lived or production-adjacent.
