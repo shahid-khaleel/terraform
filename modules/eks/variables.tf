@@ -337,7 +337,7 @@ variable "kms_key_arn" {
   description = "KMS key ARN for EKS control plane encryption"
   type        = string
   default     = null
-} 
+}
 
 ################################################################################
 # CloudWatch Log Group

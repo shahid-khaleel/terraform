@@ -22,8 +22,8 @@ name        = ""
 
 #Az for Secondary CIDR
 
-AZ1                                = ""
-AZ2                                = ""
+AZ1                             = ""
+AZ2                             = ""
 subnet-test-private-a-secondary = ""
 subnet-test-private-b-secondary = ""
 
@@ -32,5 +32,5 @@ subnet-test-private-b-secondary = ""
 autoscaling_group_arn = ""
 
 global_tags = {
-  Name            = ""
+  Name = ""
 }
