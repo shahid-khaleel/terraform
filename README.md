@@ -43,7 +43,7 @@ flowchart TB
 
         ALB["Application Load Balancer\n(provisioned by LBC via Ingress)"]
         ACM["Existing ACM Certificate\n(*.test.com, data source)"]
-        HPA["HorizontalPodAutoscaler v2\nfip-core-qa / fiu-core-qa / fiu-workflow-qa"]
+        HPA["HorizontalPodAutoscaler v2\ntest-core-qa / test2-core-qa / test2-workflow-qa"]
     end
 
     SubA --> CP
@@ -99,7 +99,7 @@ flowchart TB
 - Enables IRSA and grants the Terraform-invoking identity cluster-admin via an access entry (`enable_cluster_creator_admin_permissions = true`).
 - Encrypts Kubernetes Secrets using an **existing** KMS key (`alias/app-data`) rather than creating a new one.
 - Deploys the Cluster Autoscaler and AWS Load Balancer Controller via `helm_release`, each with its own IRSA role.
-- Defines `HorizontalPodAutoscaler` objects (`hpa-based-on-app.tf`) for three application deployments (`fip-core-qa`, `fiu-core-qa`, `fiu-workflow-qa` by default).
+- Defines `HorizontalPodAutoscaler` objects (`hpa-based-on-app.tf`) for three application deployments (`test-core-qa`, `test2-core-qa`, `test2-workflow-qa` by default).
 - Associates a secondary CIDR with existing subnets via `ENIConfig` custom-networking resources (no new subnets/CIDR blocks are created — that block is commented out in `main.tf`).
 
 There is no `dev`, `staging`, or `prod` folder. If you intend to reuse this for another environment, copy `environments/qa/` to a new directory, give it its own backend key/state, and adjust `terraform.tfvars`.
@@ -201,7 +201,7 @@ Since this is a `qa`-labeled environment, remember to `terraform destroy` it whe
 |---|---|---|
 | `terraform apply` fails resolving `data.aws_kms_key.app-data` | The `alias/app-data` KMS alias doesn't exist in the target account/region. | Create the key/alias first, or point `main.tf`'s data source at an alias that exists. |
 | `terraform apply` fails resolving `data.aws_ami.amazon_linux` with "no AMI found" | `owners = [" "]` in `main.tf` is a placeholder (a single space), not a valid AMI owner. | This must be fixed in code (owner should be `"amazon"` or the numeric Amazon EKS AMI owner ID) — not covered by this documentation pass; see Known Issues. |
-| `terraform plan` errors on `output.tf` referencing an undefined data source | `output.tf` references `data.aws_kms_key.fip-qa-mt-app-data`, but `main.tf` defines the data source as `data.aws_kms_key.app-data` — a naming mismatch. | Needs a code fix (out of scope for this documentation-only pass); see Known Issues. |
+| `terraform plan` errors on `output.tf` referencing an undefined data source | `output.tf` references `data.aws_kms_key.test-qa-mt-app-data`, but `main.tf` defines the data source as `data.aws_kms_key.app-data` — a naming mismatch. | Needs a code fix (out of scope for this documentation-only pass); see Known Issues. |
 | `kubectl`/Helm steps never run, or `null_resource` provisioners fail | `local-exec` provisioners require `aws` and `kubectl` on the machine running Terraform, with the new cluster reachable (private endpoint + VPC connectivity). | Run `terraform apply` from a host with network access to the private EKS endpoint, `aws` CLI configured, and `kubectl` installed. |
 | Kubeconfig/LBC Helm chart targets the wrong region | `null_resource.eks_kubeconfig` and the LBC image repository URL hardcode `ap-south-1` instead of using `var.region`. | If deploying outside `ap-south-1`, these hardcoded values need a code fix. |
 | State locking errors don't occur even with concurrent applies | The local backend has no locking at all — this is a silent risk, not an error you'll see until state is already corrupted. | Migrate to the commented-out S3 + DynamoDB backend before team use. |
@@ -218,7 +218,7 @@ Since this is a `qa`-labeled environment, remember to `terraform destroy` it whe
 - No remote state / state locking (local backend only; S3+DynamoDB block exists but is commented out).
 - Local backend + `terraform.tfvars` committed with blank values — no `.tfvars.example` convention yet (addressed by this documentation pass's `.gitignore`, but the underlying values workflow is still manual).
 - Several `qa`-specific resources contain unfinished placeholder values (blank `" "` strings in `kubernetes_ingress_v1`, `aws_ami` owner filter) that will fail `terraform apply` as-is.
-- A naming mismatch between `main.tf`'s `data.aws_kms_key.app-data` and `output.tf`'s `data.aws_kms_key.fip-qa-mt-app-data` reference.
+- A naming mismatch between `main.tf`'s `data.aws_kms_key.app-data` and `output.tf`'s `data.aws_kms_key.test-qa-mt-app-data` reference.
 - No automated tests (e.g., Terratest, `terraform test`) for either module.
 - No `CONTRIBUTING.md` or PR template.
 
@@ -229,7 +229,7 @@ See [Known Issues / Recommendations](#known-issues--recommendations) for the ful
 Findings from this review, in rough priority order. **No Terraform resource logic was changed as part of this documentation pass** — all of these require a follow-up code change:
 
 1. **State backend has no locking.** `backend.tf` uses `backend "local"`; the commented-out S3+DynamoDB block should be completed and enabled before any collaborative use.
-2. **`output.tf` references a data source name that doesn't exist.** `output "aws_kms_key"` reads `data.aws_kms_key.fip-qa-mt-app-data`, but the only KMS data source defined in `main.tf` is `data.aws_kms_key.app-data`. This will break `terraform plan`/`apply`.
+2. **`output.tf` references a data source name that doesn't exist.** `output "aws_kms_key"` reads `data.aws_kms_key.test-qa-mt-app-data`, but the only KMS data source defined in `main.tf` is `data.aws_kms_key.app-data`. This will break `terraform plan`/`apply`.
 3. **`data.aws_ami.amazon_linux` has an invalid `owners` filter** (`owners = [" "]`, a single space instead of `"amazon"` or a real owner ID) — the AMI lookup will fail.
 4. **`kubernetes_ingress_v1.ingress` is incomplete/placeholder.** Several required fields (`metadata.name`, `spec.ingress_class_name`, backend `service.name`, several `path` values) are set to `" "` (a literal space) rather than real values.
 5. **Hardcoded region values bypass `var.region`.** `null_resource.eks_kubeconfig`'s `local-exec` command and the AWS Load Balancer Controller's ECR `image.repository` both hardcode `ap-south-1`. If `var.region` is ever changed, these two will silently stay pointed at `ap-south-1`.

@@ -51,7 +51,7 @@ This environment does **not** create the VPC, subnets, KMS key, or ACM certifica
 | `global_tags` | `map(string)` | Tags applied via the AWS provider's `default_tags` | `{}` |
 | `AZ1` / `AZ2` | `string` | Availability zones for `ENIConfig` custom networking | — (required) |
 | `subnet-test-private-a-secondary` / `subnet-test-private-b-secondary` | `string` | Subnet IDs used as the secondary-CIDR subnet for each `ENIConfig` | — (required) |
-| `hpa_targets` | `set(string)` | Deployment names to create an HPA for | `["fip-core-qa", "fiu-core-qa", "fiu-workflow-qa"]` |
+| `hpa_targets` | `set(string)` | Deployment names to create an HPA for | `["test-core-qa", "test2-core-qa", "test2-workflow-qa"]` |
 
 **Note:** `terraform.tfvars` in this repository currently has **empty values for every one of the required variables above**. You must populate it (or supply values via `-var`/`TF_VAR_*`/a separate gitignored `.tfvars` file) before `terraform plan`/`apply` will succeed.
 

@@ -72,7 +72,7 @@ output "node_group_scaling" {
 
 output "aws_kms_key" {
   description = "KMS key ID resolved from alias"
-  value       = data.aws_kms_key.fip-qa-mt-app-data.id
+  value       = data.aws_kms_key.test-qa-mt-app-data.id
 }
 
 ###############################################################################

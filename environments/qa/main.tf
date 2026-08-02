@@ -376,7 +376,7 @@ resource "helm_release" "loadbalancer_controller" {
 resource "kubernetes_ingress_class_v1" "ingress_class_default" {
   depends_on = [helm_release.loadbalancer_controller]
   metadata {
-    name = "qa-fiu-fip-qa-mt-ingress-class"
+    name = "qa-test-qa-mt-ingress-class"
     annotations = {
       "ingressclass.kubernetes.io/is-default-class" = "true"
     }

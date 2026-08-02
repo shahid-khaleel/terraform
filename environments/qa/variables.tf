@@ -157,8 +157,8 @@ variable "subnet-test-private-b-secondary" {
 variable "hpa_targets" {
   type = set(string)
   default = [
-    "fip-core-qa",
-    "fiu-core-qa",
-    "fiu-workflow-qa"
+    "test-core-qa",
+    "test2-core-qa",
+    "test2-workflow-qa"
   ]
 }
