@@ -47,16 +47,6 @@ jobs:
   validate-qa:
     name: terraform validate (environments/qa)
     runs-on: ubuntu-latest
-    # EXPECTED TO FAIL: environments/qa/output.tf references
-    # data.aws_kms_key.test-qa-mt-app-data, but the only KMS data source
-    # actually defined (in environments/qa/main.tf) is
-    # data.aws_kms_key.app-data. That's a reference to an undeclared data
-    # source, which `terraform validate` catches as a real error even
-    # without AWS credentials (it's a config-internal-consistency check, not
-    # a live API call). This is a known, pre-existing bug tracked in
-    # README.md's "Known Issues / Recommendations" (#2) and is intentionally
-    # left unfixed by this CI-only change. A red badge on this job is the
-    # honest signal until that rename is fixed in code.
     steps:
       - name: Checkout
         uses: actions/checkout@v4

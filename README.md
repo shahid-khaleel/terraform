@@ -7,7 +7,7 @@
 ![KMS](https://img.shields.io/badge/AWS%20KMS-envelope%20encryption-2E7D32?logo=amazonwebservices&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-> **Heads up on the badge:** the `Terraform Validate` badge above will show **red**, honestly. It runs four independent jobs — `fmt`, `validate (environments/qa)`, `validate (modules/eks)`, `validate (modules/kms)` — and `validate (environments/qa)` is expected to fail until [Known Issue #2](#known-issues--recommendations) (the `output.tf` KMS data-source name mismatch) is fixed in code. The module jobs and `fmt` pass on their own. See [CI](#ci) below.
+> **Note:** [Known Issue #2](#known-issues--recommendations) — a naming mismatch between `main.tf`'s and `output.tf`'s KMS data source references — has been fixed; the `Terraform Validate` badge's four jobs (`fmt`, `validate (environments/qa)`, `validate (modules/eks)`, `validate (modules/kms)`) should now all pass. See [CI](#ci) below.
 
 ## Executive summary
 
@@ -152,11 +152,9 @@ There is no `terraform.tfvars.example` file yet — the tracked `terraform.tfvar
 | Job | What it checks | Expected result |
 |---|---|---|
 | `fmt` | `terraform fmt -check -recursive` across the whole repo | ✅ Passes |
-| `validate-qa` | `terraform validate` in `environments/qa/` | ❌ **Fails, expected.** `output.tf` references `data.aws_kms_key.test-qa-mt-app-data`, a data source that was never declared (`main.tf` defines it as `data.aws_kms_key.app-data`). `terraform validate` catches this as a "Reference to undeclared resource" error without needing AWS credentials, since it's a config-internal-consistency check, not a live API call. This is [Known Issue #2](#known-issues--recommendations) and is deliberately left unfixed by the CI-only change that added this workflow — see the in-workflow comment for the same explanation. |
+| `validate-qa` | `terraform validate` in `environments/qa/` | ✅ Passes. `output.tf` previously referenced `data.aws_kms_key.test-qa-mt-app-data`, a data source that was never declared (`main.tf` defines it as `data.aws_kms_key.app-data`); `output.tf` now references the correct name. See [Known Issue #2](#known-issues--recommendations). |
 | `validate-eks-module` | `terraform validate` in `modules/eks/`, standalone | ✅ Passes |
 | `validate-kms-module` | `terraform validate` in `modules/kms/`, standalone | ✅ Passes |
-
-**Why leave a job red instead of fixing it or removing it from CI?** The `qa` environment genuinely has this bug today — hiding it behind a green badge would be misleading, and skipping the job entirely would hide the fact that the environment doesn't currently validate at all. A red `validate-qa` job next to two green module jobs is a more honest, more useful signal than an all-green pipeline that silently ignores a real defect. Once [Known Issue #2](#known-issues--recommendations) is fixed, that job (and the overall badge) will go green without any workflow changes.
 
 ## State management
 
@@ -218,7 +216,6 @@ Since this is a `qa`-labeled environment, remember to `terraform destroy` it whe
 |---|---|---|
 | `terraform apply` fails resolving `data.aws_kms_key.app-data` | The `alias/app-data` KMS alias doesn't exist in the target account/region. | Create the key/alias first, or point `main.tf`'s data source at an alias that exists. |
 | `terraform apply` fails resolving `data.aws_ami.amazon_linux` with "no AMI found" | `owners = [" "]` in `main.tf` is a placeholder (a single space), not a valid AMI owner. | This must be fixed in code (owner should be `"amazon"` or the numeric Amazon EKS AMI owner ID) — not covered by this documentation pass; see Known Issues. |
-| `terraform plan` errors on `output.tf` referencing an undefined data source | `output.tf` references `data.aws_kms_key.test-qa-mt-app-data`, but `main.tf` defines the data source as `data.aws_kms_key.app-data` — a naming mismatch. | Needs a code fix (out of scope for this documentation-only pass); see Known Issues. |
 | `kubectl`/Helm steps never run, or `null_resource` provisioners fail | `local-exec` provisioners require `aws` and `kubectl` on the machine running Terraform, with the new cluster reachable (private endpoint + VPC connectivity). | Run `terraform apply` from a host with network access to the private EKS endpoint, `aws` CLI configured, and `kubectl` installed. |
 | Kubeconfig/LBC Helm chart targets the wrong region | `null_resource.eks_kubeconfig` and the LBC image repository URL hardcode `ap-south-1` instead of using `var.region`. | If deploying outside `ap-south-1`, these hardcoded values need a code fix. |
 | State locking errors don't occur even with concurrent applies | The local backend has no locking at all — this is a silent risk, not an error you'll see until state is already corrupted. | Migrate to the commented-out S3 + DynamoDB backend before team use. |
@@ -228,7 +225,7 @@ Since this is a `qa`-labeled environment, remember to `terraform destroy` it whe
 **What exists today:**
 - A working `qa` environment definition for EKS + managed node group + KMS-based secrets encryption + Cluster Autoscaler + AWS Load Balancer Controller + HPA.
 - Vendored, largely-unmodified `eks` and `kms` community modules providing a solid, well-tested resource layer.
-- A credential-free CI pipeline (`terraform fmt -check` + `terraform validate` on `environments/qa`, `modules/eks`, and `modules/kms` independently) — see [CI](#ci). It does not yet run `tflint`, `checkov`/`tfsec`, or a plan-on-PR step, and `validate-qa` is currently red by design until Known Issue #2 is fixed.
+- A credential-free CI pipeline (`terraform fmt -check` + `terraform validate` on `environments/qa`, `modules/eks`, and `modules/kms` independently) — see [CI](#ci). It does not yet run `tflint`, `checkov`/`tfsec`, or a plan-on-PR step.
 
 **Real gaps (not aspirational — actually missing today):**
 - Only one environment (`qa`) exists; there is no `dev`/`staging`/`prod` structure despite the `environments/` directory name implying more.
@@ -244,10 +241,10 @@ See [Known Issues / Recommendations](#known-issues--recommendations) for the ful
 
 ## Known Issues / Recommendations
 
-Findings from this review, in rough priority order. **No Terraform resource logic was changed as part of this documentation pass** — all of these require a follow-up code change:
+Findings from this review, in rough priority order. **Most of these were left as-is during the original documentation pass** and require a follow-up code change; item 2 was fixed in a later pass (see note below):
 
 1. **State backend has no locking.** `backend.tf` uses `backend "local"`; the commented-out S3+DynamoDB block should be completed and enabled before any collaborative use.
-2. **`output.tf` references a data source name that doesn't exist.** `output "aws_kms_key"` reads `data.aws_kms_key.test-qa-mt-app-data`, but the only KMS data source defined in `main.tf` is `data.aws_kms_key.app-data`. This will break `terraform plan`/`apply`.
+2. **Fixed in a later pass:** `output.tf` referenced a data source name that didn't exist — `output "aws_kms_key"` read `data.aws_kms_key.test-qa-mt-app-data`, but the only KMS data source defined in `main.tf` is `data.aws_kms_key.app-data`. `output.tf` now references the correct name; a stray `mt` segment in the old name (and in `qa-test-qa-mt-ingress-class` in `main.tf`) was also dropped since it wasn't a meaningful part of either identifier.
 3. **`data.aws_ami.amazon_linux` has an invalid `owners` filter** (`owners = [" "]`, a single space instead of `"amazon"` or a real owner ID) — the AMI lookup will fail.
 4. **`kubernetes_ingress_v1.ingress` is incomplete/placeholder.** Several required fields (`metadata.name`, `spec.ingress_class_name`, backend `service.name`, several `path` values) are set to `" "` (a literal space) rather than real values.
 5. **Hardcoded region values bypass `var.region`.** `null_resource.eks_kubeconfig`'s `local-exec` command and the AWS Load Balancer Controller's ECR `image.repository` both hardcode `ap-south-1`. If `var.region` is ever changed, these two will silently stay pointed at `ap-south-1`.
